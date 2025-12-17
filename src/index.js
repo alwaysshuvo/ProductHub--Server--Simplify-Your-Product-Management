@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { MongoClient, ServerApiVersion, ObjectId } from "mongodb";
 
 dotenv.config();
+
 const app = express();
 
 /* ===========================
@@ -13,83 +14,82 @@ app.use(cors());
 app.use(express.json());
 
 /* ===========================
-        DB CONNECT
+        DB CONFIG
 =========================== */
 const uri = process.env.MONGO_URI;
-
 if (!uri) {
-  console.error("❌ MONGO_URI not found in .env");
-  process.exit(1);
+  throw new Error("MONGO_URI is missing");
 }
 
+let client;
 let db, Users, Products, Stores, Ratings, Categories, Carts;
 
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
-
 async function connectDB() {
-  try {
-    await client.connect();
-    db = client.db("Producthub");
+  if (client) return client; // 🔁 reuse connection (serverless safe)
 
-    Users = db.collection("users");
-    Products = db.collection("products");
-    Stores = db.collection("stores");
-    Ratings = db.collection("ratings");
-    Categories = db.collection("categories");
-    Carts = db.collection("carts");
+  client = new MongoClient(uri, {
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true,
+    },
+  });
 
-    console.log("✅ MongoDB Connected Successfully");
-  } catch (error) {
-    console.error("❌ DB Connection Error:", error.message);
-    process.exit(1);
-  }
+  await client.connect();
+  db = client.db("Producthub");
+
+  Users = db.collection("users");
+  Products = db.collection("products");
+  Stores = db.collection("stores");
+  Ratings = db.collection("ratings");
+  Categories = db.collection("categories");
+  Carts = db.collection("carts");
+
+  console.log("✅ MongoDB Connected");
+  return client;
 }
-
-connectDB();
 
 /* ===========================
             ROOT
 =========================== */
-app.get("/", (_, res) => {
-  res.send({ status: "ok", message: "ProductHub Server is Running" });
+app.get("/", async (_, res) => {
+  try {
+    await connectDB();
+    res.send({ status: "ok", message: "ProductHub Server is Running" });
+  } catch {
+    res.status(500).send({ status: "error" });
+  }
 });
 
 /* ===========================
            PRODUCTS
 =========================== */
 
-// ✅ ALL PRODUCTS (ALWAYS ARRAY)
 app.get("/products", async (_, res) => {
   try {
+    await connectDB();
     const products = await Products.find().toArray();
     res.send(Array.isArray(products) ? products : []);
-  } catch (error) {
-    console.error("GET /products error:", error);
-    res.send([]); // 👈 frontend safe
+  } catch {
+    res.send([]);
   }
 });
 
-// ✅ SINGLE PRODUCT
 app.get("/products/:id", async (req, res) => {
   try {
+    await connectDB();
     const product = await Products.findOne({
       _id: new ObjectId(req.params.id),
     });
     res.send(product || {});
   } catch {
-    res.status(400).send({});
+    res.send({});
   }
 });
 
-// ✅ CREATE PRODUCT
 app.post("/products", async (req, res) => {
   try {
+    await connectDB();
     const product = {
       ...req.body,
       inStock: true,
@@ -102,9 +102,9 @@ app.post("/products", async (req, res) => {
   }
 });
 
-// ✅ UPDATE PRODUCT
 app.put("/products/:id", async (req, res) => {
   try {
+    await connectDB();
     const result = await Products.updateOne(
       { _id: new ObjectId(req.params.id) },
       { $set: req.body }
@@ -115,9 +115,9 @@ app.put("/products/:id", async (req, res) => {
   }
 });
 
-// ✅ DELETE PRODUCT
 app.delete("/products/:id", async (req, res) => {
   try {
+    await connectDB();
     const result = await Products.deleteOne({
       _id: new ObjectId(req.params.id),
     });
@@ -127,9 +127,9 @@ app.delete("/products/:id", async (req, res) => {
   }
 });
 
-// ✅ PRODUCTS BY USER
 app.get("/products/user/:uid", async (req, res) => {
   try {
+    await connectDB();
     const products = await Products.find({
       userId: req.params.uid,
     }).toArray();
@@ -139,9 +139,9 @@ app.get("/products/user/:uid", async (req, res) => {
   }
 });
 
-// ✅ TOGGLE STOCK
 app.patch("/products/toggle/:id", async (req, res) => {
   try {
+    await connectDB();
     const product = await Products.findOne({
       _id: new ObjectId(req.params.id),
     });
@@ -164,6 +164,7 @@ app.patch("/products/toggle/:id", async (req, res) => {
 
 app.post("/users", async (req, res) => {
   try {
+    await connectDB();
     const result = await Users.insertOne(req.body);
     res.send({ success: true, insertedId: result.insertedId });
   } catch {
@@ -173,6 +174,7 @@ app.post("/users", async (req, res) => {
 
 app.get("/users", async (_, res) => {
   try {
+    await connectDB();
     const users = await Users.find().toArray();
     res.send(Array.isArray(users) ? users : []);
   } catch {
@@ -186,6 +188,7 @@ app.get("/users", async (_, res) => {
 
 app.get("/ratings/product/:id", async (req, res) => {
   try {
+    await connectDB();
     const ratings = await Ratings.find({
       productId: req.params.id,
     }).toArray();
@@ -197,6 +200,7 @@ app.get("/ratings/product/:id", async (req, res) => {
 
 app.post("/ratings", async (req, res) => {
   try {
+    await connectDB();
     await Ratings.insertOne(req.body);
     res.send({ success: true });
   } catch {
@@ -210,6 +214,7 @@ app.post("/ratings", async (req, res) => {
 
 app.get("/categories", async (_, res) => {
   try {
+    await connectDB();
     const categories = await Categories.find().toArray();
     res.send(Array.isArray(categories) ? categories : []);
   } catch {
@@ -219,6 +224,7 @@ app.get("/categories", async (_, res) => {
 
 app.post("/categories", async (req, res) => {
   try {
+    await connectDB();
     await Categories.insertOne(req.body);
     res.send({ success: true });
   } catch {
@@ -228,6 +234,7 @@ app.post("/categories", async (req, res) => {
 
 app.put("/categories/:id", async (req, res) => {
   try {
+    await connectDB();
     await Categories.updateOne(
       { _id: new ObjectId(req.params.id) },
       { $set: req.body }
@@ -240,6 +247,7 @@ app.put("/categories/:id", async (req, res) => {
 
 app.delete("/categories/:id", async (req, res) => {
   try {
+    await connectDB();
     await Categories.deleteOne({
       _id: new ObjectId(req.params.id),
     });
@@ -255,6 +263,7 @@ app.delete("/categories/:id", async (req, res) => {
 
 app.get("/cart/:uid", async (req, res) => {
   try {
+    await connectDB();
     const cart = await Carts.findOne({ userId: req.params.uid });
     res.send(cart?.items || []);
   } catch {
@@ -264,6 +273,7 @@ app.get("/cart/:uid", async (req, res) => {
 
 app.post("/cart/add", async (req, res) => {
   try {
+    await connectDB();
     const { userId, productId } = req.body;
     if (!userId || !productId)
       return res.status(400).send({ success: false });
@@ -296,7 +306,9 @@ app.post("/cart/add", async (req, res) => {
 
 app.get("/store-dashboard/:uid", async (req, res) => {
   try {
+    await connectDB();
     const uid = req.params.uid;
+
     const totalProducts = await Products.countDocuments({ userId: uid });
     const ratings = await Ratings.find({ sellerId: uid }).toArray();
 
@@ -317,9 +329,6 @@ app.get("/store-dashboard/:uid", async (req, res) => {
 });
 
 /* ===========================
-              SERVER
+          EXPORT (IMPORTANT)
 =========================== */
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () =>
-  console.log(`🚀 Server running on port ${PORT}`)
-);
+export default app;
