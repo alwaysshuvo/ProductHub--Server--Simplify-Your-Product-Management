@@ -329,6 +329,10 @@ app.get("/store-dashboard/:uid", async (req, res) => {
 });
 
 /* ===========================
-          EXPORT (IMPORTANT)
+        SERVER START
 =========================== */
-export default app;
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 ProductHub Server running on port ${PORT}`);
+});
